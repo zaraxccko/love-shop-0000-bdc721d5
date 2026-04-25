@@ -35,6 +35,7 @@ const Index = () => {
   const city = useLocation((s) => s.city);
   const products = useCatalog((s) => s.products);
   const categories = useCatalog((s) => s.categories);
+  const catalogLoaded = useCatalog((s) => s.loaded);
 
   const { user, tg } = useTelegram();
   const { isAdmin } = useAuth();
