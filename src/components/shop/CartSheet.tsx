@@ -7,6 +7,7 @@ import { haptic } from "@/lib/telegram";
 import { useI18n, useT } from "@/lib/i18n";
 import { loc } from "@/lib/loc";
 import { useLocation } from "@/store/location";
+import { useLocationPromos } from "@/store/locationPromos";
 import { findDistrict } from "@/data/locations";
 import { STASH_TYPES } from "@/types/shop";
 
@@ -40,6 +41,7 @@ export const CartSheet = ({ open, onOpenChange, onCheckout }: CartSheetProps) =>
   const t = useT();
   const lang = useI18n((s) => s.lang) ?? "ru";
   void useLocation((s) => s.city); // re-render on city change
+  void useLocationPromos((s) => s.promos); // re-render on promo settings change
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const deliveryBtnRef = useRef<HTMLButtonElement>(null);
