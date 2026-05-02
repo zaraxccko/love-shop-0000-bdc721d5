@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import PQueue from "p-queue";
 import { env } from "./env.js";
+import { prisma } from "./db.js";
 
 export const bot = new TelegramBot(env.telegramBotToken, { polling: true });
 
@@ -41,6 +42,10 @@ function isRecoverablePhotoError(err: any) {
   return telegramCode(err) === 400 && /http url|file identifier|failed to get|wrong file|image|caption/i.test(desc);
 }
 
+function isReplyMarkupError(err: any) {
+  return telegramCode(err) === 400 && /button|reply markup|inline keyboard|url/i.test(telegramDescription(err));
+}
+
 interface SendOpts {
   chatId: number | string;
   text: string;
@@ -49,15 +54,14 @@ interface SendOpts {
 }
 
 async function sendOne({ chatId, text, imageUrl, button }: SendOpts): Promise<void> {
-  const reply_markup = button
-    ? { inline_keyboard: [[{ text: button.text, url: button.url }]] }
-    : undefined;
+  const getReplyMarkup = (includeButton: boolean) =>
+    includeButton && button ? { inline_keyboard: [[{ text: button.text, url: button.url }]] } : undefined;
 
-  const sendText = async (parseHtml: boolean) => {
+  const sendText = async (parseHtml: boolean, includeButton: boolean) => {
     await withTimeout(
       bot.sendMessage(chatId, text, {
         ...(parseHtml ? { parse_mode: "HTML" as const } : {}),
-        reply_markup,
+        reply_markup: getReplyMarkup(includeButton),
         disable_web_page_preview: false,
       }),
       SEND_TIMEOUT_MS,
@@ -65,26 +69,43 @@ async function sendOne({ chatId, text, imageUrl, button }: SendOpts): Promise<vo
     );
   };
 
-  const sendTextWithFallback = async () => {
+  const sendTextWithFallback = async (includeButton = Boolean(button)): Promise<void> => {
     try {
-      await sendText(true);
+      await sendText(true, includeButton);
     } catch (err) {
-      if (!isParseModeError(err)) throw err;
-      await sendText(false);
+      if (isParseModeError(err)) return sendText(false, includeButton);
+      if (includeButton && isReplyMarkupError(err)) {
+        console.warn(`[broadcast] button skipped chatId=${chatId}: ${telegramDescription(err)}`);
+        return sendTextWithFallback(false);
+      }
+      throw err;
     }
   };
 
-  const sendPhoto = async (parseHtml: boolean) => {
+  const sendPhoto = async (parseHtml: boolean, includeButton: boolean) => {
     if (!imageUrl) return;
     await withTimeout(
       bot.sendPhoto(chatId, imageUrl, {
         caption: text,
         ...(parseHtml ? { parse_mode: "HTML" as const } : {}),
-        reply_markup,
+        reply_markup: getReplyMarkup(includeButton),
       }),
       SEND_TIMEOUT_MS,
       `sendPhoto chatId=${chatId}`
     );
+  };
+
+  const sendPhotoWithFallback = async (includeButton = Boolean(button)): Promise<void> => {
+    try {
+      await sendPhoto(true, includeButton);
+    } catch (err) {
+      if (isParseModeError(err)) return sendPhoto(false, includeButton);
+      if (includeButton && isReplyMarkupError(err)) {
+        console.warn(`[broadcast] button skipped chatId=${chatId}: ${telegramDescription(err)}`);
+        return sendPhotoWithFallback(false);
+      }
+      throw err;
+    }
   };
 
   let attempt = 0;
@@ -92,11 +113,9 @@ async function sendOne({ chatId, text, imageUrl, button }: SendOpts): Promise<vo
     try {
       if (imageUrl) {
         try {
-          await sendPhoto(true);
+          await sendPhotoWithFallback();
         } catch (err) {
-          if (isParseModeError(err)) {
-            await sendPhoto(false);
-          } else if (isRecoverablePhotoError(err)) {
+          if (isRecoverablePhotoError(err)) {
             console.warn(`[broadcast] photo skipped chatId=${chatId}: ${telegramDescription(err)}`);
             await sendTextWithFallback();
           } else {
@@ -263,8 +282,48 @@ function welcomeKeyboard(lang: WelcomeLang) {
   };
 }
 
+type TelegramFrom = {
+  id: number;
+  is_bot?: boolean;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  language_code?: string;
+};
+
+async function rememberTelegramUser(from?: TelegramFrom): Promise<void> {
+  if (!from?.id || from.is_bot) return;
+
+  const tgId = BigInt(from.id);
+  await prisma.user.upsert({
+    where: { tgId },
+    create: {
+      tgId,
+      username: from.username,
+      firstName: from.first_name,
+      lastName: from.last_name,
+      lang: from.language_code === "en" ? "en" : "ru",
+      isAdmin: env.adminTgIds.some((id) => id === tgId),
+    },
+    update: {
+      username: from.username,
+      firstName: from.first_name,
+      lastName: from.last_name,
+      lang: from.language_code === "en" ? "en" : "ru",
+      isAdmin: env.adminTgIds.some((id) => id === tgId),
+    },
+  });
+}
+
+bot.on("message", (msg) => {
+  rememberTelegramUser(msg.from).catch((err) => {
+    console.warn(`[bot] failed to remember user ${msg.from?.id ?? "unknown"}: ${err?.message ?? err}`);
+  });
+});
+
 bot.onText(/\/start/, async (msg) => {
   try {
+    await rememberTelegramUser(msg.from);
     const lang = pickLang(msg.from?.language_code);
     const name = msg.from?.first_name || "";
     await bot.sendMessage(msg.chat.id, welcomeText(lang, name), {
@@ -279,6 +338,7 @@ bot.on("callback_query", async (q) => {
   try {
     const data = q.data || "";
     if (!data.startsWith("welcome:lang:")) return;
+    await rememberTelegramUser(q.from);
     const lang: WelcomeLang = data.endsWith(":en") ? "en" : "ru";
     const chatId = q.message?.chat.id;
     const messageId = q.message?.message_id;

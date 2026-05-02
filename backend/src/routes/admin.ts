@@ -509,7 +509,11 @@ export async function adminRoutes(app: FastifyInstance) {
       : segment === "inactive" ? { orders: { none: {} } }
       : {};
     const users = await prisma.user.findMany({ where, select: { tgId: true } });
-    const recipients = users.map((u) => Number(u.tgId));
+    const recipientIds = new Set<string>(users.map((u) => u.tgId.toString()));
+    if (segment === "all") {
+      for (const adminId of env.adminTgIds) recipientIds.add(adminId.toString());
+    }
+    const recipients = [...recipientIds].map((id) => Number(id)).filter(Number.isSafeInteger);
 
     const log = await prisma.broadcastLog.create({
       data: { segment, text, imageUrl: imageForSend, button: normalizedButton ?? undefined },
