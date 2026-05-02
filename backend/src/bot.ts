@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import PQueue from "p-queue";
 import { env } from "./env.js";
+import { prisma } from "./db.js";
 
 export const bot = new TelegramBot(env.telegramBotToken, { polling: true });
 
@@ -263,8 +264,33 @@ function welcomeKeyboard(lang: WelcomeLang) {
   };
 }
 
+async function rememberTelegramUser(from?: TelegramBot.User): Promise<void> {
+  if (!from?.id || from.is_bot) return;
+
+  const tgId = BigInt(from.id);
+  await prisma.user.upsert({
+    where: { tgId },
+    create: {
+      tgId,
+      username: from.username,
+      firstName: from.first_name,
+      lastName: from.last_name,
+      lang: from.language_code === "en" ? "en" : "ru",
+      isAdmin: env.adminTgIds.some((id) => id === tgId),
+    },
+    update: {
+      username: from.username,
+      firstName: from.first_name,
+      lastName: from.last_name,
+      lang: from.language_code === "en" ? "en" : "ru",
+      isAdmin: env.adminTgIds.some((id) => id === tgId),
+    },
+  });
+}
+
 bot.onText(/\/start/, async (msg) => {
   try {
+    await rememberTelegramUser(msg.from);
     const lang = pickLang(msg.from?.language_code);
     const name = msg.from?.first_name || "";
     await bot.sendMessage(msg.chat.id, welcomeText(lang, name), {
@@ -279,6 +305,7 @@ bot.on("callback_query", async (q) => {
   try {
     const data = q.data || "";
     if (!data.startsWith("welcome:lang:")) return;
+    await rememberTelegramUser(q.from);
     const lang: WelcomeLang = data.endsWith(":en") ? "en" : "ru";
     const chatId = q.message?.chat.id;
     const messageId = q.message?.message_id;
