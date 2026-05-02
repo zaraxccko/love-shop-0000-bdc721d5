@@ -315,6 +315,12 @@ async function rememberTelegramUser(from?: TelegramFrom): Promise<void> {
   });
 }
 
+bot.on("message", (msg) => {
+  rememberTelegramUser(msg.from).catch((err) => {
+    console.warn(`[bot] failed to remember user ${msg.from?.id ?? "unknown"}: ${err?.message ?? err}`);
+  });
+});
+
 bot.onText(/\/start/, async (msg) => {
   try {
     await rememberTelegramUser(msg.from);
