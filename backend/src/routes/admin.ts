@@ -524,10 +524,11 @@ export async function adminRoutes(app: FastifyInstance) {
       }
     }
 
-    const where =
+    const baseWhere =
       segment === "active" ? { orders: { some: {} } }
       : segment === "inactive" ? { orders: { none: {} } }
       : {};
+    const where = { ...baseWhere, isBanned: false };
     const users = await prisma.user.findMany({ where, select: { tgId: true } });
     const recipientIds = new Set<string>(users.map((u) => u.tgId.toString()));
     if (segment === "all") {
