@@ -95,6 +95,7 @@ describe("Index routing for top-up vs order payment", () => {
       user: null,
       loading: false,
       error: null,
+      banned: false,
       loginWithInitData: vi.fn().mockResolvedValue(null),
       refreshMe: vi.fn().mockResolvedValue(undefined),
       logout: vi.fn(),
