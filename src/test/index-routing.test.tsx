@@ -16,7 +16,7 @@ vi.mock("@/lib/telegram", () => ({
 }));
 
 vi.mock("@/store/auth", () => ({
-  useAuth: () => ({ isAdmin: false }),
+  useAuth: () => ({ isAdmin: false, isModerator: false }),
 }));
 
 vi.mock("@/components/shop/Header", () => ({
