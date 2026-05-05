@@ -186,7 +186,8 @@ export const useCart = create<CartState>()(
           (s, l) => s + l.qty * (l.priceUSD ?? l.product.priceTHB ?? 0),
           0
         );
-        return sub + (get().delivery ? DELIVERY_FEE_USD : 0);
+        const canDel = get().canDeliver();
+        return sub + (get().delivery && canDel ? DELIVERY_FEE_USD : 0);
       },
       canDeliver: () => {
         return get().lines.some((l) => {
