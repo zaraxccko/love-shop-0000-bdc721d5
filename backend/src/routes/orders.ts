@@ -2,7 +2,11 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth } from "../auth/middleware.js";
-import { notifyAdmins, notifyOrdersChat } from "../bot.js";
+import { notifyOrdersChat } from "../bot.js";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 // Терпимая схема: фронт может слать строку либо как { productId } либо как { product: {...} }.
 // Подарки могут не иметь priceUSD/variantId. Главное — валидное qty и хоть какой-то идентификатор товара.
