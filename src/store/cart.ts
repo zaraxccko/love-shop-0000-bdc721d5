@@ -63,6 +63,8 @@ interface CartState {
   subtotalUSD: () => number;
   totalTHB: () => number;
   linesWithGifts: () => DisplayCartLine[];
+  /** Доставка доступна только если в корзине есть позиции от 3 г и больше. */
+  canDeliver: () => boolean;
   /** Пересинхронизировать зеркало с активным городом (вызывается при смене локации). */
   _syncMirror: () => void;
 }
